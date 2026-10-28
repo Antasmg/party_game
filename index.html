@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kto Najbardziej? - Party Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col justify-center items-center p-4">
+
+  <!-- EKRAN STARTOWY -->
+  <div id="view-start" class="w-full max-w-md bg-slate-800 rounded-3xl p-6 shadow-2xl border border-slate-700 text-center space-y-6">
+    <div class="space-y-2">
+      <span class="text-5xl">🔥</span>
+      <h1 class="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-amber-400 to-rose-500 bg-clip-text text-transparent">
+        Kto Najbardziej?
+      </h1>
+      <p class="text-slate-400 text-sm">Wybierz tryb gry i zaczynamy!</p>
+    </div>
+
+    <div class="space-y-3 pt-2">
+      <button onclick="initHost()" class="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-lg rounded-2xl shadow-lg transform active:scale-95 transition">
+        📺 STWÓRZ POKÓJ (HOST / TV)
+      </button>
+
+      <div class="relative flex py-2 items-center">
+        <div class="flex-grow border-t border-slate-700"></div>
+        <span class="flex-shrink mx-4 text-slate-500 text-xs uppercase font-bold">lub</span>
+        <div class="flex-grow border-t border-slate-700"></div>
+      </div>
+
+      <div class="space-y-2 text-left">
+        <label class="block text-xs font-semibold text-slate-400 uppercase">Twoje Imię</label>
+        <input type="text" id="player-name" placeholder="np. Antoni" class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-500">
+      </div>
+
+      <div class="space-y-2 text-left">
+        <label class="block text-xs font-semibold text-slate-400 uppercase">Kod Pokoju</label>
+        <input type="text" id="room-code-input" placeholder="np. ABCD" class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white uppercase tracking-widest placeholder-slate-600 focus:outline-none focus:border-amber-500">
+      </div>
+
+      <button onclick="initPlayer()" class="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold text-lg rounded-2xl shadow-lg transform active:scale-95 transition">
+        📱 DOŁĄCZ Z TELEFONU
+      </button>
+    </div>
+  </div>
+
+  <!-- EKRAN HOSTA (TV / LOBBY & GRA) -->
+  <div id="view-host" class="hidden w-full max-w-4xl bg-slate-800 rounded-3xl p-8 shadow-2xl border border-slate-700 space-y-8">
+    <!-- Header Hosta -->
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4 pb-6 border-b border-slate-700">
+      <div>
+        <h2 class="text-2xl font-black text-amber-400">EKRAN GŁÓWNY (TV)</h2>
+        <p class="text-slate-400 text-sm">Kod Pokoju: <span id="host-room-code" class="font-mono text-xl font-bold text-white bg-slate-900 px-3 py-1 rounded-lg">----</span></p>
+      </div>
+
+      <!-- Konfiguracja IP dla Kodu QR -->
+      <div class="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
+        <span class="text-xs text-slate-400 pl-2">IP Wi-Fi:</span>
+        <input type="text" id="host-ip-input" placeholder="192.168.1.50" class="w-32 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm font-mono text-center focus:outline-none focus:border-amber-400">
+        <button onclick="updateQRCode()" class="px-3 py-1 bg-amber-500 text-slate-950 font-bold text-xs rounded hover:bg-amber-400">Zapisz IP</button>
+      </div>
+    </div>
+
+    <!-- Lobby Hosta -->
+    <div id="host-lobby-panel" class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+      <div class="flex flex-col items-center justify-center p-6 bg-slate-900 rounded-2xl border border-slate-700 space-y-4">
+        <div id="qrcode" class="p-4 bg-white rounded-xl shadow-lg"></div>
+        <p class="text-xs text-slate-400 text-center">Zeskanuj aparat telefonu, aby dołączyć do gry</p>
+      </div>
+
+      <div class="space-y-4">
+        <h3 class="text-lg font-bold text-slate-300">Połączeni Gracze (<span id="player-count">0</span>):</h3>
+        <div id="host-player-list" class="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 bg-slate-900/50 rounded-xl">
+          <p class="text-slate-500 text-sm italic">Czekam na graczy...</p>
+        </div>
+
+        <button id="start-game-btn" onclick="startGame()" disabled class="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-black text-xl rounded-2xl transition shadow-lg">
+          🚀 ROZPOCZNIJ GRĘ
+        </button>
+      </div>
+    </div>
+
+    <!-- Gra na TV -->
+    <div id="host-game-panel" class="hidden space-y-8 text-center">
+      <div class="space-y-3">
+        <span class="px-4 py-1.5 bg-amber-500/20 text-amber-400 rounded-full text-sm font-bold tracking-wide uppercase border border-amber-500/30">Pytanie</span>
+        <h2 id="current-question" class="text-3xl md:text-5xl font-black text-white leading-tight">---</h2>
+      </div>
+
+      <!-- Stan Głosowania -->
+      <div id="host-voting-state" class="space-y-4">
+        <div class="w-full bg-slate-900 rounded-full h-4 overflow-hidden p-1 border border-slate-700">
+          <div id="voting-progress" class="bg-gradient-to-r from-amber-400 to-rose-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <p class="text-slate-400 text-sm font-semibold">Oddane głosy: <span id="votes-cast-count" class="text-amber-400 font-bold">0</span> / <span id="total-voters-count">0</span></p>
+
+        <div id="voter-status-grid" class="flex flex-wrap justify-center gap-3 pt-4"></div>
+      </div>
+
+      <!-- Wyniki -->
+      <div id="host-results-panel" class="hidden space-y-6">
+        <h3 class="text-2xl font-bold text-amber-400">📊 WYNIKI GŁOSOWANIA</h3>
+        <div id="results-bars" class="space-y-3 max-w-lg mx-auto text-left"></div>
+        <button onclick="nextQuestion()" class="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-lg rounded-2xl shadow-xl transition">
+          NASTĘPNE PYTANIE ➡️
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EKRAN GRACZA (TELEFON) -->
+  <div id="view-player" class="hidden w-full max-w-md bg-slate-800 rounded-3xl p-6 shadow-2xl border border-slate-700 text-center space-y-6">
+    <div class="flex justify-between items-center border-b border-slate-700 pb-4">
+      <span class="font-bold text-amber-400" id="player-disp-name">Gracz</span>
+      <span class="text-xs bg-slate-900 text-slate-400 px-3 py-1 rounded-full font-mono" id="player-room-disp">---</span>
+    </div>
+
+    <!-- Oczekiwanie w lobby -->
+    <div id="player-lobby-state" class="space-y-4 py-8">
+      <div class="animate-bounce text-6xl">🎮</div>
+      <h3 class="text-2xl font-extrabold text-white">Jesteś w lobby!</h3>
+      <p class="text-slate-400 text-sm">Spoglądaj na ekran główny (TV). Gra rozpocznie się, gdy Host da znak!</p>
+    </div>
+
+    <!-- Ekran Głosowania na Telefonie -->
+    <div id="player-voting-state" class="hidden space-y-4">
+      <p class="text-xs uppercase font-bold text-slate-400 tracking-wider">Na kogo oddajesz głos?</p>
+      <div id="player-options-grid" class="grid grid-cols-1 gap-3"></div>
+    </div>
+
+    <!-- Ekran Po Oddaniu Głosu -->
+    <div id="player-voted-state" class="hidden space-y-4 py-8">
+      <div class="text-6xl animate-pulse">✅</div>
+      <h3 class="text-2xl font-extrabold text-emerald-400">Głos oddany!</h3>
+      <p class="text-slate-400 text-sm">Czekamy na resztę ekipy. Wyniki pojawią się na ekranie głównym.</p>
+    </div>
+  </div>
+
+  <script>
+    // Baza Pytań Imprezowych
+    const QUESTIONS = [
+      "Kto najbardziej prawdopodobnie trafi do aresztu podczas imprezy?",
+      "Kto wyda najwięcej pieniędzy na bezużyteczny bajer?",
+      "Kto spóźni się na własne wesele?",
+      "Kto zasśnie pierwszy na imprezie w nietypowym miejscu?",
+      "Kto przypadkowo wygada tajemnicę po jednym drinku?",
+      "Kto przeżyłby najdłużej na bezludnej wyspie?",
+      "Kto najszybciej zgubi telefon albo klucze?",
+      "Kto kupi coś najgłupszego pod wpływem impulsu?",
+      "Kto byłby najlepszym tajnym agentem?",
+      "Kto zjadłby z ziemi coś, co leżało dłużej niż 5 sekund?"
+    ];
+
+    let peer = null;
+    let connections = []; // Dla Hosta: lista połączeń z graczkami
+    let playerConn = null; // Dla Gracza: połączenie z Hostem
+    let isHost = false;
+    let roomId = "";
+    let players = []; // { id, name, voted: bool }
+    let currentQIndex = 0;
+    let votes = {}; // { playerId: targetPlayerId }
+
+    // Wyciągnięcie room ID z adresu URL (np. z kodu QR)
+    window.onload = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        document.getElementById('room-code-input').value = roomParam;
+      }
+    };
+
+    function generateRoomCode() {
+      return Math.random().toString(36).substring(2, 6).toUpperCase();
+    }
+
+    // Initialize HOST
+    function initHost() {
+      isHost = true;
+      roomId = generateRoomCode();
+      document.getElementById('host-room-code').innerText = roomId;
+      
+      showView('view-host');
+
+      // Próba domyślnego IP
+      document.getElementById('host-ip-input').value = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '' : window.location.hostname;
+      updateQRCode();
+
+      peer = new Peer('kto-host-' + roomId);
+
+      peer.on('open', (id) => {
+        console.log('Host gotowy, ID:', id);
+      });
+
+      peer.on('connection', (conn) => {
+        connections.push(conn);
+
+        conn.on('data', (data) => {
+          handleHostMessage(conn, data);
+        });
+
+        conn.on('close', () => {
+          players = players.filter(p => p.peerId !== conn.peer);
+          updateHostLobby();
+        });
+      });
+    }
+
+    function updateQRCode() {
+      const qrContainer = document.getElementById('qrcode');
+      qrContainer.innerHTML = '';
+      const ip = document.getElementById('host-ip-input').value.trim() || '192.168.1.50';
+      const port = window.location.port ? ':' + window.location.port : '';
+      const joinUrl = `http://${ip}${port}/?room=${roomId}`;
+
+      new QRCode(qrContainer, {
+        text: joinUrl,
+        width: 180,
+        height: 180,
+        colorDark: "#0f172a",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    function handleHostMessage(conn, data) {
+      if (data.type === 'JOIN') {
+        const newPlayer = { id: 'p_' + Date.now(), peerId: conn.peer, name: data.name };
+        players.push(newPlayer);
+        
+        // Odpowiedz graczu potwierdzeniem
+        conn.send({ type: 'JOIN_ACK', playerId: newPlayer.id, roomId: roomId });
+        
+        updateHostLobby();
+      } else if (data.type === 'VOTE') {
+        votes[data.voterId] = data.targetId;
+        const player = players.find(p => p.id === data.voterId);
+        if (player) player.voted = true;
+
+        updateVotingProgress();
+
+        // Jeśli wszyscy oddali głos -> Pokaż wyniki
+        if (Object.keys(votes).length >= players.length && players.length > 0) {
+          setTimeout(showResults, 800);
+        }
+      }
+    }
+
+    function updateHostLobby() {
+      document.getElementById('player-count').innerText = players.length;
+      const listContainer = document.getElementById('host-player-list');
+      
+      if (players.length === 0) {
+        listContainer.innerHTML = `<p class="text-slate-500 text-sm italic">Czekam na graczy...</p>`;
+        document.getElementById('start-game-btn').disabled = true;
+      } else {
+        listContainer.innerHTML = players.map(p => `
+          <span class="px-3 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-xl text-sm font-bold flex items-center gap-1.5">
+            👤 ${p.name}
+          </span>
+        `).join('');
+        document.getElementById('start-game-btn').disabled = false;
+      }
+    }
+
+    function startGame() {
+      document.getElementById('host-lobby-panel').classList.add('hidden');
+      document.getElementById('host-game-panel').classList.remove('hidden');
+      currentQIndex = 0;
+      loadQuestion();
+    }
+
+    function loadQuestion() {
+      votes = {};
+      players.forEach(p => p.voted = false);
+
+      document.getElementById('current-question').innerText = QUESTIONS[currentQIndex % QUESTIONS.length];
+      document.getElementById('host-results-panel').classList.add('hidden');
+      document.getElementById('host-voting-state').classList.remove('hidden');
+      
+      updateVotingProgress();
+
+      // Powiadom graczy o nowym pytaniu
+      broadcast({
+        type: 'NEW_QUESTION',
+        question: QUESTIONS[currentQIndex % QUESTIONS.length],
+        players: players.map(p => ({ id: p.id, name: p.name }))
+      });
+    }
+
+    function updateVotingProgress() {
+      const votedCount = Object.keys(votes).length;
+      const totalCount = players.length;
+      const pct = totalCount > 0 ? (votedCount / totalCount) * 100 : 0;
+
+      document.getElementById('voting-progress').style.width = pct + '%';
+      document.getElementById('votes-cast-count').innerText = votedCount;
+      document.getElementById('total-voters-count').innerText = totalCount;
+
+      const grid = document.getElementById('voter-status-grid');
+      grid.innerHTML = players.map(p => `
+        <div class="px-4 py-2 rounded-xl text-xs font-bold border transition ${p.voted ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500'}">
+          ${p.voted ? '✅' : '⏳'} ${p.name}
+        </div>
+      `).join('');
+    }
+
+    function showResults() {
+      document.getElementById('host-voting-state').classList.add('hidden');
+      document.getElementById('host-results-panel').classList.remove('hidden');
+
+      // Zliczanie głosów
+      const counts = {};
+      players.forEach(p => counts[p.id] = 0);
+      Object.values(votes).forEach(targetId => {
+        if (counts[targetId] !== undefined) counts[targetId]++;
+      });
+
+      const maxVotes = Math.max(...Object.values(counts), 1);
+      const sortedPlayers = [...players].sort((a, b) => counts[b.id] - counts[a.id]);
+
+      const barsContainer = document.getElementById('results-bars');
+      barsContainer.innerHTML = sortedPlayers.map(p => {
+        const voteCnt = counts[p.id];
+        const barPct = (voteCnt / maxVotes) * 100;
+        return `
+          <div class="space-y-1">
+            <div class="flex justify-between text-sm font-bold">
+              <span class="text-white">${p.name}</span>
+              <span class="text-amber-400">${voteCnt} gł.</span>
+            </div>
+            <div class="w-full bg-slate-900 rounded-lg h-3 overflow-hidden p-0.5 border border-slate-700">
+              <div class="bg-amber-400 h-full rounded-md transition-all duration-700" style="width: ${barPct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+      broadcast({ type: 'SHOW_RESULTS' });
+    }
+
+    function nextQuestion() {
+      currentQIndex++;
+      loadQuestion();
+    }
+
+    function broadcast(data) {
+      connections.forEach(conn => conn.send(data));
+    }
+
+    // Initialize PLAYER
+    function initPlayer() {
+      const name = document.getElementById('player-name').value.trim();
+      const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+
+      if (!name || !code) {
+        alert('Podaj swoje imię oraz kod pokoju!');
+        return;
+      }
+
+      isHost = false;
+      document.getElementById('player-disp-name').innerText = name;
+      document.getElementById('player-room-disp').innerText = code;
+
+      peer = new Peer();
+
+      peer.on('open', () => {
+        playerConn = peer.connect('kto-host-' + code);
+
+        playerConn.on('open', () => {
+          playerConn.send({ type: 'JOIN', name: name });
+        });
+
+        playerConn.on('data', (data) => {
+          handlePlayerMessage(data);
+        });
+
+        playerConn.on('error', (err) => {
+          alert('Błąd połączenia z pokojem! Sprawdź kod pokoju.');
+        });
+      });
+    }
+
+    let myPlayerId = "";
+
+    function handlePlayerMessage(data) {
+      if (data.type === 'JOIN_ACK') {
+        myPlayerId = data.playerId;
+        showView('view-player');
+      } else if (data.type === 'NEW_QUESTION') {
+        document.getElementById('player-lobby-state').classList.add('hidden');
+        document.getElementById('player-voted-state').classList.add('hidden');
+        document.getElementById('player-voting-state').classList.remove('hidden');
+
+        const grid = document.getElementById('player-options-grid');
+        grid.innerHTML = data.players.map(p => `
+          <button onclick="castVote('${p.id}')" class="w-full py-4 bg-slate-700 hover:bg-amber-500 hover:text-slate-950 font-black text-lg rounded-2xl transition border border-slate-600 shadow-md transform active:scale-95">
+            ${p.name}
+          </button>
+        `).join('');
+      } else if (data.type === 'SHOW_RESULTS') {
+        document.getElementById('player-voting-state').classList.add('hidden');
+        document.getElementById('player-voted-state').classList.add('hidden');
+        document.getElementById('player-lobby-state').classList.remove('hidden');
+      }
+    }
+
+    function castVote(targetId) {
+      if (playerConn) {
+        playerConn.send({ type: 'VOTE', voterId: myPlayerId, targetId: targetId });
+        document.getElementById('player-voting-state').classList.add('hidden');
+        document.getElementById('player-voted-state').classList.remove('hidden');
+      }
+    }
+
+    function showView(viewId) {
+      document.getElementById('view-start').classList.add('hidden');
+      document.getElementById('view-host').classList.add('hidden');
+      document.getElementById('view-player').classList.add('hidden');
+
+      document.getElementById(viewId).classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
