@@ -61,11 +61,11 @@
         <p class="text-slate-400 text-sm">Kod Pokoju: <span id="host-room-code" class="font-mono text-xl font-bold text-white bg-slate-900 px-3 py-1 rounded-lg">----</span></p>
       </div>
 
-      <!-- Konfiguracja IP dla Kodu QR -->
-      <div class="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
-        <span class="text-xs text-slate-400 pl-2">IP Wi-Fi:</span>
+      <!-- Konfiguracja IP (widoczna tylko na localhost) -->
+      <div id="local-ip-box" class="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
+        <span class="text-xs text-slate-400 pl-2">Lokalne IP:</span>
         <input type="text" id="host-ip-input" placeholder="192.168.1.50" class="w-32 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm font-mono text-center focus:outline-none focus:border-amber-400">
-        <button onclick="updateQRCode()" class="px-3 py-1 bg-amber-500 text-slate-950 font-bold text-xs rounded hover:bg-amber-400">Zapisz IP</button>
+        <button onclick="updateQRCode()" class="px-3 py-1 bg-amber-500 text-slate-950 font-bold text-xs rounded hover:bg-amber-400">Zapisz</button>
       </div>
     </div>
 
@@ -73,7 +73,7 @@
     <div id="host-lobby-panel" class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
       <div class="flex flex-col items-center justify-center p-6 bg-slate-900 rounded-2xl border border-slate-700 space-y-4">
         <div id="qrcode" class="p-4 bg-white rounded-xl shadow-lg"></div>
-        <p class="text-xs text-slate-400 text-center">Zeskanuj aparat telefonu, aby dołączyć do gry</p>
+        <p class="text-xs text-slate-400 text-center font-mono" id="host-share-link">---</p>
       </div>
 
       <div class="space-y-4">
@@ -91,7 +91,7 @@
     <!-- Gra na TV -->
     <div id="host-game-panel" class="hidden space-y-8 text-center">
       <div class="space-y-3">
-        <span class="px-4 py-1.5 bg-amber-500/20 text-amber-400 rounded-full text-sm font-bold tracking-wide uppercase border border-amber-500/30">Pytanie</span>
+        <span id="question-number-badge" class="px-4 py-1.5 bg-amber-500/20 text-amber-400 rounded-full text-sm font-bold tracking-wide uppercase border border-amber-500/30">Pytanie 1 / 10</span>
         <h2 id="current-question" class="text-3xl md:text-5xl font-black text-white leading-tight">---</h2>
       </div>
 
@@ -105,12 +105,31 @@
         <div id="voter-status-grid" class="flex flex-wrap justify-center gap-3 pt-4"></div>
       </div>
 
-      <!-- Wyniki -->
+      <!-- Wyniki Rundy -->
       <div id="host-results-panel" class="hidden space-y-6">
-        <h3 class="text-2xl font-bold text-amber-400">📊 WYNIKI GŁOSOWANIA</h3>
+        <h3 class="text-2xl font-bold text-amber-400">📊 WYNIKI RUNDY</h3>
         <div id="results-bars" class="space-y-3 max-w-lg mx-auto text-left"></div>
-        <button onclick="nextQuestion()" class="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-lg rounded-2xl shadow-xl transition">
+        <button id="next-q-btn" onclick="nextQuestion()" class="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-lg rounded-2xl shadow-xl transition">
           NASTĘPNE PYTANIE ➡️
+        </button>
+      </div>
+
+      <!-- PODSUMOWANIE KOŃCOWE (LEADERBOARD) -->
+      <div id="host-final-summary" class="hidden space-y-8 text-center">
+        <div class="space-y-2">
+          <span class="text-6xl">🏆</span>
+          <h2 class="text-4xl font-black bg-gradient-to-r from-amber-300 via-amber-400 to-rose-500 bg-clip-text text-transparent">
+            PODSUMOWANIE IMPREZY
+          </h2>
+          <p class="text-slate-400 text-sm">Oto kto zdobył najwięcej tytułów w dzisiejszej grze!</p>
+        </div>
+
+        <div class="bg-slate-900 rounded-2xl p-6 border border-slate-700 max-w-xl mx-auto space-y-4">
+          <div id="final-leaderboard-list" class="space-y-3"></div>
+        </div>
+
+        <button onclick="location.reload()" class="px-8 py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold text-lg rounded-2xl shadow-xl transition">
+          🔄 ZAGRAJ PONOWNIE
         </button>
       </div>
     </div>
@@ -142,6 +161,13 @@
       <h3 class="text-2xl font-extrabold text-emerald-400">Głos oddany!</h3>
       <p class="text-slate-400 text-sm">Czekamy na resztę ekipy. Wyniki pojawią się na ekranie głównym.</p>
     </div>
+
+    <!-- Ekran Konca Gry na Telefonie -->
+    <div id="player-gameover-state" class="hidden space-y-4 py-8">
+      <div class="text-6xl">🏆</div>
+      <h3 class="text-2xl font-extrabold text-amber-400">Koniec Gry!</h3>
+      <p class="text-slate-400 text-sm">Sprawdź tabelę wyników na ekranie głównym (TV)!</p>
+    </div>
   </div>
 
   <script>
@@ -160,15 +186,17 @@
     ];
 
     let peer = null;
-    let connections = []; // Dla Hosta: lista połączeń z graczkami
-    let playerConn = null; // Dla Gracza: połączenie z Hostem
+    let connections = []; 
+    let playerConn = null; 
     let isHost = false;
     let roomId = "";
     let players = []; // { id, name, voted: bool }
     let currentQIndex = 0;
     let votes = {}; // { playerId: targetPlayerId }
 
-    // Wyciągnięcie room ID z adresu URL (np. z kodu QR)
+    // Statystyki gry: { playerId: { name: string, categoryWins: number, totalVotes: number } }
+    let gameStats = {};
+
     window.onload = () => {
       const urlParams = new URLSearchParams(window.location.search);
       const roomParam = urlParams.get('room');
@@ -181,7 +209,6 @@
       return Math.random().toString(36).substring(2, 6).toUpperCase();
     }
 
-    // Initialize HOST
     function initHost() {
       isHost = true;
       roomId = generateRoomCode();
@@ -189,8 +216,11 @@
       
       showView('view-host');
 
-      // Próba domyślnego IP
-      document.getElementById('host-ip-input').value = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '' : window.location.hostname;
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+      if (!isLocal) {
+        document.getElementById('local-ip-box').style.display = 'none';
+      }
+
       updateQRCode();
 
       peer = new Peer('kto-host-' + roomId);
@@ -216,9 +246,17 @@
     function updateQRCode() {
       const qrContainer = document.getElementById('qrcode');
       qrContainer.innerHTML = '';
-      const ip = document.getElementById('host-ip-input').value.trim() || '192.168.1.50';
-      const port = window.location.port ? ':' + window.location.port : '';
-      const joinUrl = `http://${ip}${port}/?room=${roomId}`;
+      
+      let baseUrl = window.location.href.split('?')[0];
+      const customIp = document.getElementById('host-ip-input').value.trim();
+      
+      if (customIp && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        const port = window.location.port ? ':' + window.location.port : '';
+        baseUrl = `http://${customIp}${port}/`;
+      }
+
+      const joinUrl = `${baseUrl}?room=${roomId}`;
+      document.getElementById('host-share-link').innerText = joinUrl;
 
       new QRCode(qrContainer, {
         text: joinUrl,
@@ -232,12 +270,13 @@
 
     function handleHostMessage(conn, data) {
       if (data.type === 'JOIN') {
-        const newPlayer = { id: 'p_' + Date.now(), peerId: conn.peer, name: data.name };
+        const newPlayer = { id: 'p_' + Date.now() + Math.floor(Math.random()*100), peerId: conn.peer, name: data.name };
         players.push(newPlayer);
         
-        // Odpowiedz graczu potwierdzeniem
+        // Inicjalizacja statystyk dla gracza
+        gameStats[newPlayer.id] = { name: newPlayer.name, categoryWins: 0, totalVotes: 0 };
+
         conn.send({ type: 'JOIN_ACK', playerId: newPlayer.id, roomId: roomId });
-        
         updateHostLobby();
       } else if (data.type === 'VOTE') {
         votes[data.voterId] = data.targetId;
@@ -246,7 +285,6 @@
 
         updateVotingProgress();
 
-        // Jeśli wszyscy oddali głos -> Pokaż wyniki
         if (Object.keys(votes).length >= players.length && players.length > 0) {
           setTimeout(showResults, 800);
         }
@@ -281,13 +319,13 @@
       votes = {};
       players.forEach(p => p.voted = false);
 
+      document.getElementById('question-number-badge').innerText = `Pytanie ${currentQIndex + 1} / ${QUESTIONS.length}`;
       document.getElementById('current-question').innerText = QUESTIONS[currentQIndex % QUESTIONS.length];
       document.getElementById('host-results-panel').classList.add('hidden');
       document.getElementById('host-voting-state').classList.remove('hidden');
       
       updateVotingProgress();
 
-      // Powiadom graczy o nowym pytaniu
       broadcast({
         type: 'NEW_QUESTION',
         question: QUESTIONS[currentQIndex % QUESTIONS.length],
@@ -316,20 +354,32 @@
       document.getElementById('host-voting-state').classList.add('hidden');
       document.getElementById('host-results-panel').classList.remove('hidden');
 
-      // Zliczanie głosów
+      // Zliczanie głosów z obecnej rundy
       const counts = {};
       players.forEach(p => counts[p.id] = 0);
       Object.values(votes).forEach(targetId => {
         if (counts[targetId] !== undefined) counts[targetId]++;
       });
 
-      const maxVotes = Math.max(...Object.values(counts), 1);
+      const maxVotes = Math.max(...Object.values(counts), 0);
+
+      // Aktualizacja statystyk ogólnych
+      players.forEach(p => {
+        const cnt = counts[p.id] || 0;
+        if (!gameStats[p.id]) gameStats[p.id] = { name: p.name, categoryWins: 0, totalVotes: 0 };
+        
+        gameStats[p.id].totalVotes += cnt;
+        if (maxVotes > 0 && cnt === maxVotes) {
+          gameStats[p.id].categoryWins += 1;
+        }
+      });
+
       const sortedPlayers = [...players].sort((a, b) => counts[b.id] - counts[a.id]);
 
       const barsContainer = document.getElementById('results-bars');
       barsContainer.innerHTML = sortedPlayers.map(p => {
         const voteCnt = counts[p.id];
-        const barPct = (voteCnt / maxVotes) * 100;
+        const barPct = maxVotes > 0 ? (voteCnt / maxVotes) * 100 : 0;
         return `
           <div class="space-y-1">
             <div class="flex justify-between text-sm font-bold">
@@ -343,21 +393,77 @@
         `;
       }).join('');
 
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      // Zmiana napisu na przycisku po ostatnim pytaniu
+      const nextBtn = document.getElementById('next-q-btn');
+      if (currentQIndex >= QUESTIONS.length - 1) {
+        nextBtn.innerText = "🏆 ZOBACZ PODSUMOWANIE KOŃCOWE";
+        nextBtn.className = "px-8 py-4 bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 font-black text-lg rounded-2xl shadow-xl transition transform hover:scale-105";
+      } else {
+        nextBtn.innerText = "NASTĘPNE PYTANIE ➡️";
+        nextBtn.className = "px-8 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-lg rounded-2xl shadow-xl transition";
+      }
+
+      confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
 
       broadcast({ type: 'SHOW_RESULTS' });
     }
 
     function nextQuestion() {
       currentQIndex++;
-      loadQuestion();
+      if (currentQIndex >= QUESTIONS.length) {
+        showFinalSummary();
+      } else {
+        loadQuestion();
+      }
+    }
+
+    function showFinalSummary() {
+      document.getElementById('current-question').classList.add('hidden');
+      document.getElementById('question-number-badge').classList.add('hidden');
+      document.getElementById('host-results-panel').classList.add('hidden');
+      document.getElementById('host-final-summary').classList.remove('hidden');
+
+      // Sortowanie graczy wg liczby wygranych pytań (a w przypadku remisu wg łącznej liczby głosów)
+      const leaderboard = Object.values(gameStats).sort((a, b) => {
+        if (b.categoryWins !== a.categoryWins) {
+          return b.categoryWins - a.categoryWins;
+        }
+        return b.totalVotes - a.totalVotes;
+      });
+
+      const listContainer = document.getElementById('final-leaderboard-list');
+      listContainer.innerHTML = leaderboard.map((p, idx) => {
+        let medal = '🎖️';
+        if (idx === 0) medal = '🥇';
+        if (idx === 1) medal = '🥈';
+        if (idx === 2) medal = '🥉';
+
+        return `
+          <div class="flex items-center justify-between p-4 bg-slate-800/80 rounded-xl border border-slate-700">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">${medal}</span>
+              <div class="text-left">
+                <p class="font-extrabold text-white text-lg">${p.name}</p>
+                <p class="text-xs text-slate-400">Wygrane kategorie: <b class="text-amber-400">${p.categoryWins}</b></p>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-xl font-black text-amber-400">${p.totalVotes}</span>
+              <span class="text-xs text-slate-400 block">głosów w sumie</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } });
+
+      broadcast({ type: 'GAME_OVER' });
     }
 
     function broadcast(data) {
       connections.forEach(conn => conn.send(data));
     }
 
-    // Initialize PLAYER
     function initPlayer() {
       const name = document.getElementById('player-name').value.trim();
       const code = document.getElementById('room-code-input').value.trim().toUpperCase();
@@ -384,7 +490,7 @@
           handlePlayerMessage(data);
         });
 
-        playerConn.on('error', (err) => {
+        playerConn.on('error', () => {
           alert('Błąd połączenia z pokojem! Sprawdź kod pokoju.');
         });
       });
@@ -399,6 +505,7 @@
       } else if (data.type === 'NEW_QUESTION') {
         document.getElementById('player-lobby-state').classList.add('hidden');
         document.getElementById('player-voted-state').classList.add('hidden');
+        document.getElementById('player-gameover-state').classList.add('hidden');
         document.getElementById('player-voting-state').classList.remove('hidden');
 
         const grid = document.getElementById('player-options-grid');
@@ -411,6 +518,11 @@
         document.getElementById('player-voting-state').classList.add('hidden');
         document.getElementById('player-voted-state').classList.add('hidden');
         document.getElementById('player-lobby-state').classList.remove('hidden');
+      } else if (data.type === 'GAME_OVER') {
+        document.getElementById('player-voting-state').classList.add('hidden');
+        document.getElementById('player-voted-state').classList.add('hidden');
+        document.getElementById('player-lobby-state').classList.add('hidden');
+        document.getElementById('player-gameover-state').classList.remove('hidden');
       }
     }
 
